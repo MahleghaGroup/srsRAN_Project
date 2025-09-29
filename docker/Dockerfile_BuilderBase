@@ -1,0 +1,57 @@
+#
+# Copyright 2021-2025 Software Radio Systems Limited
+#
+# This file is part of srsRAN
+#
+# srsRAN is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# srsRAN is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# A copy of the GNU Affero General Public License can be found in
+# the LICENSE file in the top-level directory of this distribution
+# and at http://www.gnu.org/licenses/.
+#
+
+# Build args
+################
+# OS_VERSION            Ubuntu OS version
+# UHD_VERSION           UHD version number
+# DPDK_VERSION          DPDK version number
+# MARCH                 gcc/clang compatible arch
+# NUM_JOBS              Number or empty for all
+# EXTRA_CMAKE_ARGS      Extra flags for srsRAN Project
+
+ARG OS_VERSION=24.04
+ARG DPDK_VERSION=24.11.2
+ARG MARCH=native
+ARG NUM_JOBS=""
+
+##################
+# Stage 1: Build #
+##################
+FROM ubuntu:$OS_VERSION AS builder
+
+# Adding the complete repo to the context, in /src folder
+ADD . /src
+# An alternative could be to download the repo
+# RUN apt update && apt-get install -y --no-install-recommends git git-lfs  ca-certificates
+# RUN git clone https://github.com/srsran/srsRAN_Project.git /src
+
+# Install srsRAN build dependencies
+RUN /src/docker/scripts/install_dependencies.sh all && \
+    /src/docker/scripts/install_dpdk_dependencies.sh build && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git clang
+
+ARG DPDK_VERSION
+ARG MARCH
+ARG NUM_JOBS
+
+# Compile UHD/DPDK
+RUN /src/docker/scripts/build_dpdk.sh "${DPDK_VERSION}" ${MARCH} ${NUM_JOBS}
+

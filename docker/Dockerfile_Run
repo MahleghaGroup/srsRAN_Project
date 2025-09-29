@@ -1,0 +1,78 @@
+#
+# Copyright 2021-2025 Software Radio Systems Limited
+#
+# This file is part of srsRAN
+#
+# srsRAN is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# srsRAN is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# A copy of the GNU Affero General Public License can be found in
+# the LICENSE file in the top-level directory of this distribution
+# and at http://www.gnu.org/licenses/.
+#
+
+# Build args
+################
+# OS_VERSION            Ubuntu OS version
+# UHD_VERSION           UHD version number
+# DPDK_VERSION          DPDK version number
+# MARCH                 gcc/clang compatible arch
+# NUM_JOBS              Number or empty for all
+# EXTRA_CMAKE_ARGS      Extra flags for srsRAN Project
+
+ARG OS_VERSION=24.04
+ARG DPDK_VERSION=24.11.2
+ARG MARCH=native
+ARG NUM_JOBS=""
+
+##################
+# Stage 1: Build #
+##################
+FROM srsran_builder_base:latest AS builder
+
+ADD . /src
+
+ARG DPDK_VERSION
+ARG MARCH
+ARG NUM_JOBS
+
+# Compile srsRAN Project and install it in the OS
+ARG COMPILER=gcc
+ARG EXTRA_CMAKE_ARGS=""
+ENV DPDK_DIR=/opt/dpdk/${DPDK_VERSION}
+RUN if [ -z "$NUM_JOBS" ]; then NUM_JOBS=$(nproc); fi \
+    && \
+    /src/docker/scripts/builder.sh -c ${COMPILER} -m "-j${NUM_JOBS} srscu srsdu srsdu_split_7_2 gnb gnb_split_7_2 ru_emulator" \
+    -DBUILD_TESTING=False -DENABLE_EXPORT=ON -DENABLE_ZEROMQ=ON -DMARCH=${MARCH} -DCMAKE_INSTALL_PREFIX=/opt/srs \
+    ${EXTRA_CMAKE_ARGS} /src
+RUN cp /src/build/apps/cu/srscu             /tmp/srscu                     && \
+    cp /src/build/apps/du/srsdu             /tmp/srsdu                     && \
+    cp /src/build/apps/du_split_7_2/srsdu   /tmp/srsdu_split_7_2           && \
+    cp /src/build/apps/gnb/gnb              /tmp/gnb                       && \
+    cp /src/build/apps/gnb_split_7_2/gnb    /tmp/gnb_split_7_2             && \
+    cd /src/build                                                          && \
+    make install                                                           && \
+    mv /tmp/srscu                           /opt/srs/bin/srscu             && \
+    mv /tmp/srsdu                           /opt/srs/bin/srsdu             && \
+    mv /tmp/srsdu_split_7_2                 /opt/srs/bin/srsdu_split_7_2   && \
+    mv /tmp/gnb                             /opt/srs/bin/gnb               && \
+    mv /tmp/gnb_split_7_2                            /opt/srs/share/srsran/
+
+################
+# Stage 2: Run #
+################
+
+FROM srsran_run_base:latest
+
+ARG DPDK_VERSION
+
+# Copy srsRAN binaries and libraries installed in previous stage
+COPY --from=builder /opt/srs                  /usr/local
+
